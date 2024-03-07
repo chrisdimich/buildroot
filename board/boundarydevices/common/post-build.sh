@@ -10,7 +10,11 @@ UBOOT_DEFCONFIG="$(grep BR2_TARGET_UBOOT_BOARD_DEFCONFIG ${BR2_CONFIG} | sed 's/
 
 if grep -Eq "^BR2_aarch64=y$" ${BR2_CONFIG}; then
 	MKIMAGE_ARCH=arm64
-	UBOOT_BINARY=imx8-boot-sd.bin
+	if grep -Eq "^BR2_PACKAGE_FREESCALE_IMX_PLATFORM_IMX93=y$" ${BR2_CONFIG}; then
+		UBOOT_BINARY=imx9-boot-sd.bin
+	else
+		UBOOT_BINARY=imx8-boot-sd.bin
+	fi
 else
 	MKIMAGE_ARCH=arm
 	UBOOT_BINARY=u-boot.imx
