@@ -1,9 +1,12 @@
 setenv bootargs ''
 
-m4=''
 kernelimage=zImage
 bootcommand=bootz
 a_base=0x10000000
+
+if test -z "${imx_cpu}"; then
+	setexpr imx_cpu sub ".*(..?..?)$" "\\1" "${soc_type}"
+fi
 
 #grab 1st 2/3 characters of string
 setexpr cpu2 sub "^(..?).*" "\\1" "${imx_cpu}"
@@ -18,10 +21,10 @@ elif itest.s x8M == "x${cpu2}"; then
 	a_base=0x40000000
 	kernelimage=Image
 	bootcommand=booti
-fi
-if itest.s "x1" == "x${m4enabled}" ; then
-	run m4boot;
-	m4='-m4';
+elif itest.s x8U == "x${cpu2}"  || itest.s x93 == "${cpu3}"; then
+	a_base=0x80000000
+	kernelimage=Image
+	bootcommand=booti
 fi
 
 setexpr a_script  ${a_base} + 0x00800000
@@ -36,36 +39,72 @@ if itest.s "x" == "x${board}" ; then
 	exit;
 fi
 
-if itest.s "x" == "x${fdt_file}" ; then
-	if itest.s x51 == "x${cpu2}" ; then
-		fdt_file=imx51-${board}${m4}.dtb;
-	elif itest.s x53 == "x${cpu2}" ; then
-		fdt_file=imx53-${board}${m4}.dtb;
-	elif itest.s x6DL == "x${cpu3}" || itest.s x6SO == "x${cpu3}" ; then
-		fdt_file=imx6dl-${board}.dtb;
-	elif itest.s x6QP == "x${cpu3}" ; then
-		fdt_file=imx6qp-${board}.dtb;
-	elif itest.s x6SX == "x${cpu3}" ; then
-		fdt_file=imx6sx-${board}${m4}.dtb;
-	elif itest.s x6UL == "x${cpu3}" ; then
-		fdt_file=imx6ull-${board}.dtb;
-	elif itest.s x7D == "x${cpu2}" ; then
-		fdt_file=imx7d-${board}${m4}.dtb;
-	elif itest.s x8MM == "x${cpu3}" ; then
-		fdt_file=imx8mm-${board}${m4}.dtb;
-	elif itest.s x8MN == "x${cpu3}" ; then
-		fdt_file=imx8mn-${board}${m4}.dtb;
-	elif itest.s x8MP == "x${cpu3}" ; then
-		if itest *0x30360800 == 0x00824310 ; then
-			fdt_file=imx8mp-a0-${board}${m4}.dtb;
-		else
-			fdt_file=imx8mp-${board}${m4}.dtb;
-		fi
-	elif itest.s x8MQ == "x${cpu3}" ; then
-		fdt_file=imx8mq-${board}${m4}.dtb;
+if itest.s x51 == "x${cpu2}" ; then
+	dtb_prefix=imx51;
+elif itest.s x53 == "x${cpu2}" ; then
+	dtb_prefix=imx53;
+elif itest.s x6DL == "x${cpu3}" || itest.s x6SO == "x${cpu3}" ; then
+	dtb_prefix=imx6dl;
+elif itest.s x6QP == "x${cpu3}" ; then
+	dtb_prefix=imx6qp;
+elif itest.s x6SX == "x${cpu3}" ; then
+	dtb_prefix=imx6sx;
+elif itest.s x6UL == "x${cpu3}" ; then
+	dtb_prefix=imx6ull;
+elif itest.s x7D == "x${cpu2}" ; then
+	dtb_prefix=imx7d;
+elif itest.s x8MM == "x${cpu3}" ; then
+	dtb_prefix=imx8mm;
+elif itest.s x8MN == "x${cpu3}" ; then
+	dtb_prefix=imx8mn;
+elif itest.s x8MP == "x${cpu3}" ; then
+	if itest *0x30360800 == 0x00824310 ; then
+		dtb_prefix=imx8mp-a0;
 	else
-		fdt_file=imx6q-${board}.dtb;
+		dtb_prefix=imx8mp;
 	fi
+elif itest.s x8MQ == "x${cpu3}" ; then
+	dtb_prefix=imx8mq;
+elif itest.s x8ULP == "x${imx_cpu}" ; then
+	dtb_prefix=imx8ulp;
+elif itest.s x93 == "${cpu3}" ; then
+	dtb_prefix=imx93;
+else
+	dtb_prefix=imx6q;
+fi
+
+if test ! -z "${mcore_enabled}"; then
+    if test ! -z "${mcoreboot}"; then
+            run mcoreboot;
+    fi
+    mcore_dtb=1
+fi
+if test ! -z "${m4enabled}"; then
+    if test ! -z "${m4boot}"; then
+            run m4boot;
+    fi
+    mcore_dtb=1
+fi
+
+if test -z "${fdtfile}" ; then
+	if test -z "${fdt_file}" ; then
+	    bn=${dtb_prefix}-${board}${board_rv}${board_carrier}${board_modifier};
+	    if test ! -z "${mcore_dtb}" ; then
+		    if test -e ${devtype} ${devnum}:${distro_bootpart} ${prefix}${bn}-rpmsg.dtb; then
+		            fdt_file=${bn}-rpmsg.dtb
+		    else
+		            fdt_file=${bn}-m4.dtb
+		    fi
+	    else
+		    fdt_file=${bn}.dtb
+	    fi
+	fi
+else
+	fdt_file=${fdtfile}
+fi
+
+if test ! -z "${mcore_dtb}" ; then
+    setenv bootargs ${bootargs} ${mcore_bootargs}
 fi
 
 if itest.s x${distro_bootpart} == x ; then
@@ -79,13 +118,11 @@ fi
 if itest.s x${console} != x ; then
 	setenv bootargs ${bootargs} console=${console},115200
 fi
-if itest.s "x" == "x$vmalloc" ; then
-	vmalloc=400M
-fi
+
 if itest.s x${consoleblank} == x ; then
 	consoleblank=0
 fi
-setenv bootargs ${bootargs} vmalloc=${vmalloc} consoleblank=${consoleblank} rootwait fixrtc cpu=${imx_cpu} board=${board} uboot_release=${uboot_release}
+setenv bootargs ${bootargs} consoleblank=${consoleblank} rootwait
 
 if load ${devtype} ${devnum}:${distro_bootpart} ${a_fdt} ${prefix}${fdt_file} ; then
 	fdt addr ${a_fdt}
